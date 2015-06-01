@@ -1,7 +1,7 @@
 TDAG_FILE_NAME=task_DAG.json
 SVG_FILE_NAME=output.svg
 
-all: temp.dot
+all: clean temp.dot
 	dot -Tsvg temp.dot -o $(SVG_FILE_NAME)
 
 temp.dot:
