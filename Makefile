@@ -8,4 +8,4 @@ temp.dot:
 	python process_task_dag.py $(TDAG_FILE_NAME) > temp.dot
 
 clean:
-	rm temp.dot output.svg
+	rm temp.dot $(SVG_FILE_NAME)

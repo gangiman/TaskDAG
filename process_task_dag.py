@@ -1,7 +1,38 @@
 import json
 import sys
+import os
 from operator import attrgetter
 from collections import deque
+import argparse
+
+
+from yaml import load, dump
+from pprint import pprint
+
+
+try:
+    from yaml import CLoader as Loader, CDumper as Dumper
+except ImportError:
+    from yaml import Loader, Dumper
+
+
+
+def get_arguments():
+    parser = argparse.ArgumentParser(description='Utility to work with task TAG')
+
+    def is_valid_file(arg):
+        if not os.path.exists(arg):
+            parser.error("The file %s does not exist!" % arg)
+        else:
+            return open(arg, 'r')  # return an open file handle
+
+    parser.add_argument("-i", dest="input", required=True,
+                        help="input taskDAG file", metavar="FILE",
+                        type=is_valid_file)
+    parser.add_argument('--orphans', action='store_true', help='dot file to write graph vector image')
+    parser.add_argument('-o', dest="dot_output", metavar="FILE.dot", help='dot file to write graph vector image')
+    return parser.parse_args()
+
 
 GRAY, BLACK = 0, 1
 
@@ -47,33 +78,20 @@ class Task:
             dependant.predications.remove(self)
 
 
-class DAG:
-    def __init__(self):
-        pass
+class TaskDAG(object):
 
-
-class TaskDAG(DAG):
-
-    def __init__(self):
-        DAG.__init__(self)
+    def __init__(self, tasks_structure):
         self.names_to_obj = {}
-
-    @classmethod
-    def from_json(cls, filename):
-        with open(filename, "r") as fh:
-            tasks_structure = json.loads(fh.read())
-        task_dag = cls()
-        task_dag.raw_structure = tasks_structure
+        # task_dag.raw_structure = tasks_structure
         sorted_tasks = topological_sort(tasks_structure)
         sorted_tasks.reverse()
         for task_name in sorted_tasks:
-            task_body = tasks_structure[task_name]
-            task = task_dag.add_task(task_name, task_body)
+            task_body = tasks_structure.get(task_name, {})
+            task = self.add_task(task_name, task_body)
             if "deps" in task_body:
                 for dep in task_body["deps"]:
-                    task.add_dependency(task_dag.names_to_obj[dep])
-        task_dag.remove_inactive_tasks()
-        return task_dag
+                    task.add_dependency(self.names_to_obj[dep])
+        self.remove_inactive_tasks()
 
     def get_all_tasks(self):
         return self.names_to_obj.values()
@@ -139,14 +157,12 @@ class TaskDAG(DAG):
             dot_code += '\n{id_} [label="{label}{params}" shape=Mrecord]'.format(
                 id_=task_names_to_ids_mapping[task_name],
                 label=task_name,
-                params=
-                (
+                params=(
                     " | " + " | ".join("{{{0} | {1}}}".format(k, v)
                                        for k, v in task_body["data"].items())
                 ).replace(">", "\>")
                 if "data" in task_body else
-                ""
-            )
+                "")
             if "deps" in task_body:
                 for dep in task_body["deps"]:
                     dot_code += "\n{0} -> {1};".format(task_names_to_ids_mapping[dep], task_names_to_ids_mapping[task_name])
@@ -158,8 +174,10 @@ def topological_sort(graph):
 
     def dfs(node):
         state[node] = GRAY
-        # deps = graph.get(node, ())
-        deps = graph[node]["deps"] if "deps" in graph[node] else ()
+        if node in graph and "deps" in graph[node]:
+            deps = graph[node]["deps"]
+        else:
+            deps = ()
         for k in deps:
             sk = state.get(k, None)
             if sk == GRAY:
@@ -175,15 +193,34 @@ def topological_sort(graph):
     return order
 
 
-def main(filename):
-    task_dag = TaskDAG.from_json(filename)
-    task_dag.remove_inactive_tasks()
-    # print("\n".join(str(t) for t in task_dag.find_final_tasks()))
-    print(task_dag.translate_to_dot())
+def validate_task_dag(data):
+    assert isinstance(data, dict)
+    for _task in data.values():
+        assert isinstance(_task, dict)
+        for _key in _task:
+            assert _key in ("deps", "data")
+
+
+def print_orphan_nodes(data):
+    deps_all = set(sum([task.get('deps', []) for task in data.values()], []))
+    for _task in data:
+        if _task not in deps_all:
+            print(_task)
+
+# # output = dump(data, Dumper=Dumper)
+
+
+def main():
+    args = get_arguments()
+    data = load(args.input, Loader=Loader)
+    validate_task_dag(data)
+    if args.orphans:
+        print_orphan_nodes(data)
+    if args.dot_output:
+        with open(args.dot_output, 'w+') as output_stream:
+            td = TaskDAG(data)
+            output_stream.write(td.translate_to_dot())
 
 
 if __name__ == '__main__':
-    if len(sys.argv) > 1:
-        main(sys.argv[1])
-    else:
-        print("path to task_dag.json needed.")
+    main()
