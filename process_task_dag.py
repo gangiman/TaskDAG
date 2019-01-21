@@ -1,5 +1,3 @@
-import json
-import sys
 import os
 from operator import attrgetter
 from collections import deque
@@ -7,7 +5,6 @@ import argparse
 
 
 from yaml import load, dump
-from pprint import pprint
 
 
 try:
